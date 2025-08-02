@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=64.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,28 +7,13 @@ name = "musicgen-interpretation"
 version = "0.1.0"
 description = "Fine-grained control over Music Generation with Activation Steering"
 readme = "README.md"
-license = {text = "MIT"}
 authors = [
-    {name = "MusicGen Interpretation Team", email = "team@example.com"}
+    {name = "AI Club, Centre for Innovation, IIT Madras", email = "jaydenkjoe@gmail.com"}
 ]
 maintainers = [
-    {name = "MusicGen Interpretation Team", email = "team@example.com"}
+    {name = "AI Club, Centre for Innovation, IIT Madras", email = "jaydenkjoe@gmail.com"}
 ]
 keywords = ["music", "generation", "ai", "interpretability", "activation-steering", "musicgen"]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Topic :: Multimedia :: Sound/Audio :: Analysis",
-    "Topic :: Multimedia :: Sound/Audio :: Synthesis",
-]
 requires-python = ">=3.8"
 dependencies = [
     "torch>=2.0.0",
@@ -57,12 +42,6 @@ docs = [
     "sphinx-rtd-theme>=1.2.0",
     "myst-parser>=1.0.0",
 ]
-
-[project.urls]
-Homepage = "https://github.com/your-username/musicgen-interpretation"
-Documentation = "https://musicgen-interpretation.readthedocs.io"
-Repository = "https://github.com/your-username/musicgen-interpretation.git"
-Issues = "https://github.com/your-username/musicgen-interpretation/issues"
 
 [project.scripts]
 musicgen-interpretation = "musicgen_interpretation.cli:main"
@@ -130,4 +109,5 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
+
 ] 

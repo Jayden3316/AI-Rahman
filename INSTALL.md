@@ -113,9 +113,10 @@ If you use this library in your research, please cite:
 ```bibtex
 @software{musicgen_interpretation,
   title={MusicGen Interpretation: Fine-grained control over Music Generation with Activation Steering},
-  author={MusicGen Interpretation Team},
-  year={2024},
-  url={https://github.com/your-username/musicgen-interpretation}
+  author={AI Club, Centre for Innovation, IIT Madras},
+  year={2025},
+  url={https://github.com/Jayden3316/AI-Rahman/}
 }
 
 ``` 
+

@@ -1,49 +1,28 @@
+# get the residuals from given input samples
 import numpy as np
 import librosa
-import os
 import re
+import os
 from datasets import load_dataset
-from typing import Dict, List, Any
-import torch
+from typing import Optional, List, Dict, Any
 
 
-def sanitize_string(s: str) -> str:
-    """Sanitize string by removing non-alphanumeric characters."""
+def sanitize_string(s):
     return re.sub(r'[^a-zA-Z0-9]', '', s)
 
-
-def process_gtzan_data(model, data: Dict[str, Any], count: int) -> List[Dict[str, Any]]:
-    """
-    Process GTZAN dataset with MusicGen model to extract residual streams.
-    
-    Args:
-        model: MusicGen model with hooks
-        data: GTZAN dataset item
-        count: Index counter
-    
-    Returns:
-        List of processed results with residual streams
-    """
+def process_with_residuals(model, data, count):
     target_sr = 32000
-    audio = data['audio']
-    sr = audio['sampling_rate']
-    
-    # Get genre label
-    id2label_fn = data['genre'].__class__.int2str
-    genre = id2label_fn(data['genre'])
+    #print(data)
+    audio = np.array(data['audio'][0]['array'])
+    sr = data['audio'][0]['sampling_rate']
+    genre = data['genre'][0]
     prompt = f"Generate {genre} music continuing the given audio"
-    
-    # Resample audio
-    audio['array'] = librosa.resample(y=audio['array'], orig_sr=sr, target_sr=target_sr)
-    
-    # Create audio segments
-    audio_segments = [
-        audio['array'][i*target_sr:(i+10)*target_sr] 
-        for i in range(5, int(audio['array'].shape[0]//target_sr), 5)
-    ]
-    
+    #print(audio['array'].shape)
+    audio = librosa.resample(y=audio, orig_sr=sr, target_sr=target_sr)
+    audio_segments = [audio[i*target_sr:(i+10)*target_sr] for i in range(0, int(audio.shape[0]//target_sr), 10)]
     result = []
     for segment in audio_segments:
+        #print(f"Segment shape: {segment.shape} segment type: {type(segment)}")
         outputs = model.generate_with_residuals(
             text=prompt,
             audio=segment,
@@ -52,14 +31,11 @@ def process_gtzan_data(model, data: Dict[str, Any], count: int) -> List[Dict[str
             guidance_scale=3.0,
             do_sample=True
         )
+        print('generated outputs')
+        # Get the residual stream from the last layer
+        residual = np.array([outputs['residual_streams'][i].detach().cpu().numpy() for i in outputs['residual_streams']])
         
-        # Get residual stream from all layers
-        residual = np.array([
-            outputs['residual_streams'][i].detach().cpu().numpy() 
-            for i in outputs['residual_streams']
-        ])
-        
-        # Create result dictionary
+        # Create result dictionary with all original features and new data
         result.append({
             'genre': genre,
             'generated_audio': outputs['audio_values'].detach().cpu().numpy(),
@@ -70,171 +46,75 @@ def process_gtzan_data(model, data: Dict[str, Any], count: int) -> List[Dict[str
     
     return result
 
-
-def process_fma_data(model, data: Dict[str, Any], count: int) -> List[Dict[str, Any]]:
-    """
-    Process FMA Medium dataset with MusicGen model to extract residual streams.
-    
-    Args:
-        model: MusicGen model with hooks
-        data: FMA dataset item
-        count: Index counter
-    
-    Returns:
-        List of processed results with residual streams
-    """
-    target_sr = 32000
-    audio = data['audio']
-    sr = audio['sampling_rate']
-    
-    # Get genre label from FMA
-    id2label_fma = data['genres'].__class__.feature.int2str
-    genre = id2label_fma(data['genres'][0])
-    prompt = f"Generate {genre} music continuing the given audio"
-    
-    # Resample audio
-    audio['array'] = librosa.resample(y=audio['array'], orig_sr=sr, target_sr=target_sr)
-    
-    # Create audio segments (different segmentation for FMA)
-    audio_segments = [
-        audio['array'][i*target_sr:(i+10)*target_sr] 
-        for i in range(0, int(audio['array'].shape[0]//target_sr), 10)
-    ]
-    
-    result = []
-    for segment in audio_segments:
-        outputs = model.generate_with_residuals(
-            text=prompt,
-            audio=segment,
-            sampling_rate=target_sr,
-            max_new_tokens=512,
-            guidance_scale=3.0,
-            do_sample=True
-        )
-        
-        # Get residual stream from all layers
-        residual = np.array([
-            outputs['residual_streams'][i].detach().cpu().numpy() 
-            for i in outputs['residual_streams']
-        ])
-        
-        # Create result dictionary
-        result.append({
-            'genre': genre,
-            'generated_audio': outputs['audio_values'].detach().cpu().numpy(),
-            'residual_stream': residual,
-            'sampling_rate': outputs['sampling_rate'],
-            'prompt_used': prompt
-        })
-    
-    return result
-
-
-def save_processed_data(processed_data: List[Dict[str, Any]], save_dir: str, 
-                       filename: str) -> None:
-    """
-    Save processed data to .npz files.
-    
-    Args:
-        processed_data: List of processed data dictionaries
-        save_dir: Directory to save files
-        filename: Base filename
-    """
+def save_activations(
+    model,
+    save_dir,
+    dataset,
+):
     os.makedirs(save_dir, exist_ok=True)
-    
-    for i, result in enumerate(processed_data):
-        save_path = os.path.join(save_dir, f"{filename}_{i}.npz")
-        np.savez(save_path, **result)
-        print(f"Saved: {save_path}")
-
-
-def load_gtzan_dataset():
-    """Load GTZAN dataset."""
-    return load_dataset("marsyas/gtzan", trust_remote_code=True)
-
-
-def load_fma_dataset():
-    """Load FMA Medium dataset."""
-    return load_dataset("benjamin-paine/free-music-archive-medium", 
-                       trust_remote_code=True, streaming=True)
-
-
-def process_gtzan_batch(model, dataset, save_dir: str, genres_to_process: List[str] = None,
-                       start_idx: int = 0, end_idx: int = None):
-    """
-    Process a batch of GTZAN data and save results.
-    
-    Args:
-        model: MusicGen model with hooks
-        dataset: GTZAN dataset
-        save_dir: Directory to save processed data
-        genres_to_process: List of genres to process (if None, process all)
-        start_idx: Starting index
-        end_idx: Ending index (if None, process to end)
-    """
-    if end_idx is None:
-        end_idx = len(dataset['train'])
-    
-    for idx in range(start_idx, end_idx):
-        data = dataset['train'][idx]
-        genre = sanitize_string(data['genre'].__class__.int2str(data['genre']))
-        
-        # Filter by genre if specified
-        if genres_to_process and genre not in genres_to_process:
-            continue
+    print('Made folder')
+    idx = 0
+    for data in dataset.iter(batch_size=1):
+        genre = data['genre'][0]
+        name = f"{genre}_{idx}"
+        processed_data = process_with_residuals(model, data, idx)
+        for result in range(len(processed_data)):
+            print(f"processed {name}_{result}")
+            # Save using numpy's save function
+            save_path = os.path.join(save_dir, f"{name}_{result}.npz")
+            np.savez(
+                save_path,
+                **processed_data[result]
+            )
             
-        try:
-            processed_data = process_gtzan_data(model, data, idx)
-            filename = f"{genre}_{idx}"
-            save_processed_data(processed_data, save_dir, filename)
-            
-            if idx % 10 == 0:
-                print(f"Processed {idx} GTZAN samples")
-                
-        except Exception as e:
-            print(f"Error processing GTZAN sample {idx}: {e}")
-            continue
+            if idx % 1 == 0:  # Print progress every 10 items
+                print(f"Processed {idx} samples")
+        idx += 1
 
+def load_lewtun_dataset():
+    """Load Lewtun modified dataset from HuggingFace."""
+    try:
+        dataset = load_dataset("roovy54/lewtun_music_genres_modified", streaming=True)
+        return dataset
+    except Exception as e:
+        print(f"Error loading Lewtun dataset: {e}")
+        return None
 
-def process_fma_batch(model, dataset, save_dir: str, genres_to_process: List[str] = None,
-                     max_samples: int = 1000):
+def get_data(save_dir: str) -> List[Dict[str, Any]]:
     """
-    Process a batch of FMA data and save results.
+    Load processed data from .npz files.
     
     Args:
-        model: MusicGen model with hooks
-        dataset: FMA dataset
-        save_dir: Directory to save processed data
-        genres_to_process: List of genres to process (if None, process all)
-        max_samples: Maximum number of samples to process
-    """
-    count = 0
-    for data in dataset['train']:
-        if count >= max_samples:
-            break
-            
-        genre = data['genres'].__class__.feature.int2str(data['genres'][0])
+        save_dir: Directory containing processed .npz files (activations from the residual stream)
         
-        # Filter by genre if specified
-        if genres_to_process and genre not in genres_to_process:
-            continue
-            
-        try:
-            processed_data = process_fma_data(model, data, count)
-            filename = f"{genre}_{count}"
-            save_processed_data(processed_data, save_dir, filename)
-            
-            if count % 10 == 0:
-                print(f"Processed {count} FMA samples")
-                
-            count += 1
-            
-        except Exception as e:
-            print(f"Error processing FMA sample {count}: {e}")
-            continue
+    Returns:
+        List of dictionaries with loaded data (which can be used as a dataset to train the probes)
+    """
+    data = []
+    # Iterate through each file in the directory
+    for filename in os.listdir(save_dir):
+        if filename.endswith('.npz'):
+            # Load the file
+            loaded_file = dict(np.load(os.path.join(save_dir, filename), allow_pickle=True))
 
+            # Reshape the residual streams
+            if not data:
+                print("Residual shape:", loaded_file['residual_stream'].shape)
+            residual_unconditional = loaded_file['residual_stream'].reshape(24, 2, 1024)[:, 1, :]
+            residual_conditional = loaded_file['residual_stream'].reshape(24, 2, 1024)[:, 0, :]
 
-if __name__ == "__main__":
-    # Example usage
-    print("Data processing module loaded successfully!")
-    print("Use the functions to process GTZAN and FMA datasets with MusicGen model.") 
+            # Create a dictionary for the current file's data
+            file_data = {
+                'filename': filename,
+                'genre': loaded_file['genre'],  # Keeping original genre if needed
+            }
+
+            # Add residuals to the dictionary
+            for layer in range(24):
+                file_data[f'residual_conditional_{layer + 1}'] = residual_conditional[layer, :]
+                file_data[f'residual_unconditional_{layer + 1}'] = residual_unconditional[layer, :]
+
+            # Append the file data to the list
+            data.append(file_data)
+
+    return data

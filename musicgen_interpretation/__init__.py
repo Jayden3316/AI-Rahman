@@ -12,13 +12,15 @@ __email__ = "team@example.com"
 from .musicgen_hooks import (
     MusicgenWithResiduals,
     VectorGuidedMusicgen,
-    save_activations,
-    load_activations,
-    extract_and_save_residuals,
+    load_weights_as_dict,
+    steer_music,
 )
 
 from .linear_probes import (
     SimpleNN,
+    sign,
+    load_processed_data,
+    prepare_data_for_training,
     train_probe_mse,
     train_probe_cross_entropy,
     train_probes_all_layers,
@@ -26,31 +28,32 @@ from .linear_probes import (
     plot_results,
     save_weights,
     load_weights,
-    load_processed_data,
-    prepare_data_for_training,
 )
 
 from .data_processing import (
-    process_gtzan_data,
-    process_fma_data,
-    process_gtzan_batch,
-    process_fma_batch,
-    load_gtzan_dataset,
-    load_fma_dataset,
-    save_processed_data,
+    sanitize_string,
+    process_with_residuals,
+    save_activations,
+    load_lewtun_dataset,
+    get_data,
 )
+
+# CLI entry point
+from .cli import main as cli_main
 
 # Main exports
 __all__ = [
     # MusicGen Hooks
     "MusicgenWithResiduals",
     "VectorGuidedMusicgen",
-    "save_activations",
-    "load_activations",
-    "extract_and_save_residuals",
+    "load_weights_as_dict",
+    "steer_music",
     
     # Linear Probes
     "SimpleNN",
+    "sign",
+    "load_processed_data",
+    "prepare_data_for_training",
     "train_probe_mse",
     "train_probe_cross_entropy",
     "train_probes_all_layers",
@@ -58,15 +61,14 @@ __all__ = [
     "plot_results",
     "save_weights",
     "load_weights",
-    "load_processed_data",
-    "prepare_data_for_training",
     
     # Data Processing
-    "process_gtzan_data",
-    "process_fma_data",
-    "process_gtzan_batch",
-    "process_fma_batch",
-    "load_gtzan_dataset",
-    "load_fma_dataset",
-    "save_processed_data",
-] 
+    "sanitize_string",
+    "process_with_residuals",
+    "save_activations",
+    "load_lewtun_dataset",
+    "get_data",
+    
+    # CLI
+    "cli_main",
+]

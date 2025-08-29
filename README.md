@@ -1,189 +1,236 @@
-# Fine-Grained control over Music Generation with Activation Steering
+# MusicGen Interpretation
 
-## Files Structure
+Fine-grained control over Music Generation with Activation Steering using Facebook's MusicGen model.
 
-1. **`data_processing.py`** - Handles data from different datasets (GTZAN and FMA)
-2. **`musicgen_hooks.py`** - Loads MusicGen with hooks and saves activations
-3. **`linear_probes.py`** - Trains linear probes and provides inference results
-4. **`requirements.txt`** - Required dependencies
-5. **`README.md`** - This file
+## Overview
+
+- Extract and analyze hidden states from all decoder layers
+- Train classifiers on internal representations for genre classification
+- Guide music generation using trained steering vectors
+- Support for 4-genre classification (Classical, Electronic, Rock, Jazz)
 
 ## Installation
 
-1. Install the required dependencies:
+### Prerequisites
+- Python 3.8 or higher
+- CUDA-compatible GPU (recommended)
+- At least 8GB of GPU memory for small models
+
+### Install Dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
-## Usage
+### Install the Library
 
-### 1. Data Processing (`data_processing.py`)
-
-This script handles data from GTZAN and FMA datasets with separate functions for each.
-
-#### Key Functions:
-
-- `process_gtzan_data(model, data, count)` - Process GTZAN dataset items
-- `process_fma_data(model, data, count)` - Process FMA dataset items
-- `process_gtzan_batch(model, dataset, save_dir, ...)` - Process batch of GTZAN data
-- `process_fma_batch(model, dataset, save_dir, ...)` - Process batch of FMA data
-- `load_gtzan_dataset()` - Load GTZAN dataset
-- `load_fma_dataset()` - Load FMA dataset
-
-#### Example Usage:
-```python
-from data_processing import *
-from musicgen_hooks import MusicgenWithResiduals
-
-# Load model
-model = MusicgenWithResiduals()
-
-# Load datasets
-gtzan = load_gtzan_dataset()
-fma = load_fma_dataset()
-
-# Process GTZAN data
-process_gtzan_batch(model, gtzan, "gtzan_processed", 
-                   genres_to_process=['classical', 'rock'])
-
-# Process FMA data
-process_fma_batch(model, fma, "fma_processed", 
-                 genres_to_process=['Classical', 'Rock'])
+```bash
+pip install -e .
 ```
 
-### 2. MusicGen Hooks (`musicgen_hooks.py`)
+## Quick Start
 
-This script loads MusicGen with hooks and saves activations in .pth files.
+### 1. Process Dataset
 
-#### Key Classes:
+Process the Lewtun music genres dataset to extract residual streams:
 
-- `MusicgenWithResiduals` - Base class with hooks to capture residual streams
-- `VectorGuidedMusicgen` - Extended class with steering vector capabilities
+```bash
+python -m musicgen_interpretation.cli process-lewtun --save-dir data/processed
+```
 
-#### Key Functions:
+### 2. Train Linear Probes
 
-- `save_activations(activations, save_path)` - Save activations to .pth file
-- `load_activations(load_path)` - Load activations from .pth file
-- `extract_and_save_residuals(model, ...)` - Extract and save residual streams
+Train linear probes for 4-class genre classification:
 
-#### Example Usage:
+```bash
+python -m musicgen_interpretation.cli train-probes \
+    --data-dir data/processed \
+    --output-dir models/probes \
+    --num-classes 4 \
+    --epochs 250
+```
+
+### 3. Generate Steered Music
+
+Generate music with steering towards a specific genre:
+
+```bash
+python -m musicgen_interpretation.cli generate \
+    --text "Generate energetic music" \
+    --steering-weights models/probes/mse_weights.npy \
+    --target-class 2 \
+    --target-layers 19 \
+    --output generated_rock.wav
+```
+
+## Usage Examples
+
+### Python API
+
 ```python
-from musicgen_hooks import MusicgenWithResiduals, VectorGuidedMusicgen
+import torch
+from musicgen_interpretation import MusicgenWithResiduals, VectorGuidedMusicgen, load_weights_as_dict
 
-# Basic model with hooks
+# Load model with residual extraction
 model = MusicgenWithResiduals()
 
-# Generate with residual capture
+# Generate music and extract residuals
 outputs = model.generate_with_residuals(
     text="Generate classical music",
     max_new_tokens=512
 )
 
-# Save activations
-save_activations(outputs['residual_streams'], "residuals.pth")
+# Access residual streams from all layers
+residuals = outputs['residual_streams']
+audio = outputs['audio_values']
 
-# Vector guided model
-guided_model = VectorGuidedMusicgen()
-guided_model.load_steering_vectors(steering_vectors, [12])
-outputs = guided_model.generate_with_multilayer_guidance(
-    text="Generate rock music",
-    target_layers=[12],
-    layer_strengths={12: 0.6}
+# For steering, load trained weights
+weights_dict = load_weights_as_dict("models/probes/mse_weights.npy")
+steering_model = VectorGuidedMusicgen()
+
+# Load steering vectors for specific genre (e.g., Rock = class 2)
+steering_model.load_steering_vectors(weights_dict, target_class=2, target_layers=[19])
+
+# Generate with steering
+steered_output = steering_model.generate_with_multilayer_guidance(
+    text="Generate music",
+    target_layers=[19],
+    layer_strengths={19: 0.5}
 )
 ```
 
-### 3. Linear Probes (`linear_probes.py`)
+### Advanced Steering with Audio Input
 
-This script trains linear probes and provides inference results with both MSE and Cross Entropy loss.
-
-#### Key Functions:
-
-- `train_probe_mse(X, y, ...)` - Train probe using MSE loss (without sigmoid/softmax)
-- `train_probe_cross_entropy(X, y, ...)` - Train probe using Cross Entropy loss
-- `train_probes_all_layers(df, residual_type, loss_type, ...)` - Train probes for all layers
-- `evaluate_probe_performance(df, weights_dict, ...)` - Evaluate probe performance
-- `plot_results(layers, accuracies, losses, ...)` - Plot training results
-
-#### Example Usage:
 ```python
-from linear_probes import *
-import pandas as pd
+import torchaudio
+from musicgen_interpretation import steer_music, load_weights_as_dict
 
-# Load processed data
-df = load_processed_data("gtzan_processed")
+# Load audio file
+audio, sr = torchaudio.load("input.mp3")
+weights_dict = load_weights_as_dict("models/probes/mse_weights.npy")
 
-# Add labels (assuming binary classification: classical=-1, rock=1)
-genre_map = {'classical': -1, 'rock': 1}
-df['label'] = df['genre'].apply(lambda x: genre_map[x])
-
-# Train MSE probes for all layers
-weights_dict_mse = train_probes_all_layers(
-    df, 
-    residual_type='conditional',
-    loss_type='mse',
-    num_epochs=250
+# Steer music generation based on input audio
+outputs = steer_music(
+    model=None,  # Will be created internally
+    text="Continue this music in rock style",
+    audio=audio,
+    sr=sr,
+    target_class=2,  # Rock
+    target_layers=[19],
+    steering_period=25,
+    weights_dict=weights_dict
 )
-
-# Train Cross Entropy probes for all layers
-weights_dict_ce = train_probes_all_layers(
-    df, 
-    residual_type='conditional',
-    loss_type='cross_entropy',
-    num_epochs=250
-)
-
-# Evaluate performance
-results = evaluate_probe_performance(df, weights_dict_mse, 'conditional')
-
-# Plot results
-plot_results(
-    list(range(1, 25)), 
-    results['accuracies'], 
-    results['losses'],
-    save_path="probe_results.png"
-)
-
-# Save weights
-save_weights(weights_dict_mse, "mse_weights.npy")
-save_weights(weights_dict_ce, "ce_weights.npy")
 ```
 
-## Key Features
+## Command Line Interface
 
-### Data Processing
-- Separate functions for GTZAN and FMA datasets
-- Audio resampling to 32kHz
-- Residual stream extraction from all 24 layers
-- Batch processing capabilities
-- Error handling and progress tracking
+### Available Commands
 
-### MusicGen Hooks
-- Captures residual streams from all decoder layers
-- Supports both conditional and unconditional generation
-- Vector steering capabilities for controlled generation
-- Activation saving/loading functionality
+- `process-lewtun`: Process Lewtun dataset and extract residual streams
+- `train-probes`: Train linear probes for genre classification
+- `generate`: Generate music with optional steering
+- `evaluate`: Evaluate probe performance across layers
 
-### Linear Probes
-- **MSE Loss Training**: Trains without sigmoid/softmax as requested
-- **Cross Entropy Loss Training**: Standard classification training
-- Layer-wise training for all 24 layers
-- Performance evaluation and visualization
-- Weight saving/loading functionality
+### Detailed Command Usage
 
-## Notes
+#### Process Dataset
+```bash
+python -m musicgen_interpretation.cli process-lewtun \
+    --save-dir data/processed \
+    --max-samples 500
+```
 
-- The MSE loss training is done without sigmoid/softmax as specified
-- Both loss functions provide accuracy and loss metrics
-- The code supports both GTZAN and FMA datasets with different processing functions
-- All activations are saved in .pth format for easy loading
-- The vector steering functionality allows for controlled music generation
+#### Train Probes
+```bash
+python -m musicgen_interpretation.cli train-probes \
+    --data-dir data/processed \
+    --output-dir models/probes \
+    --num-classes 4 \
+    --loss-type mse \
+    --epochs 250
+```
 
-## Dependencies
+#### Generate Music
+```bash
+python -m musicgen_interpretation.cli generate \
+    --text "Generate energetic electronic music" \
+    --steering-weights models/probes/mse_weights.npy \
+    --target-class 1 \
+    --target-layers 19 20 21 \
+    --layer-strengths 0.5 0.3 0.2 \
+    --steering-period 25 \
+    --output electronic_music.wav
+```
 
-See `requirements.txt` for the complete list of required packages. The main dependencies are:
-- PyTorch for deep learning
-- Transformers for MusicGen model
-- Librosa for audio processing
-- Scikit-learn for data preprocessing
-- Datasets for loading GTZAN and FMA
-- Matplotlib for visualization 
+#### Evaluate Probes
+```bash
+python -m musicgen_interpretation.cli evaluate \
+    --data-dir data/processed \
+    --weights-file models/probes/mse_weights.npy \
+    --num-classes 4 \
+    --output-plot results/performance.png
+```
+
+## Model Architecture
+
+### Supported Models
+- `facebook/musicgen-small` (default)
+- `facebook/musicgen-medium`
+- `facebook/musicgen-large`
+
+### Genre Classes
+- **0**: Classical
+- **1**: Electronic  
+- **2**: Rock
+- **3**: Jazz
+
+### Layer Architecture
+- **24 Decoder Layers**: Each layer's residual stream can be analyzed and steered
+- **1024 Hidden Dimensions**: Feature vectors for classification and steering
+- **Conditional/Unconditional Streams**: Separate analysis of guided vs unguided generation
+
+## Notebooks
+
+The `test/` directory contains Jupyter notebooks demonstrating key functionality:
+
+- `steering_musicgen-update.ipynb`: Complete steering workflow
+- `musicgen-interp-update.ipynb`: Basic interpretation examples  
+- `probe-training-update.ipynb`: Linear probe training examples
+
+## File Structure
+
+```
+musicgen_interpretation/
+├── __init__.py              # Main library exports
+├── cli.py                   # Command-line interface
+├── musicgen_hooks.py        # MusicGen model wrappers with hooks
+├── linear_probes.py         # Linear probe training and evaluation
+├── data_processing.py       # Dataset processing utilities
+├── main.py                  # Entry point
+└── test/                    # Example notebooks
+    ├── steering_musicgen-update.ipynb
+    ├── musicgen-interp-update.ipynb
+    └── probe-training-update.ipynb
+```
+
+## Performance Tips
+
+### GPU Memory Management
+- Use `torch.cuda.empty_cache()` between experiments
+- Start with `musicgen-small` for development TODO: some parts have been hardcoded to include only 24 layers while `musicgen-medium` and `musicgen-large` have 48. A future version will make this to be model agnostic.
+- Monitor GPU memory usage with large batch sizes
+
+### Training Recommendations
+- Use stratified sampling for balanced datasets
+- Start with MSE loss for initial experiments
+- Layer 17-21 typically show best steering performance (As mentioned in the main text, this is determined using the accuracy of the linear probes)
+- Steering strength 0.3-0.7 works well for most cases
+
+### Audio Quality
+- Use 32kHz sampling rate for best results. `musicgen-small` was trained at this sampling rate. Other sampling rates are highly likely to throw errors.
+- Generate 5-10 second clips for experimentation
+
+## Acknowledgments
+
+- Facebook AI Research for the MusicGen model
+- lewtun https://huggingface.co/lewtun for the dataset that we used to collect activations from different genres.

@@ -1,0 +1,27 @@
+include README.md
+include requirements.txt
+include LICENSE
+include pyproject.toml
+include setup.py
+
+# Include package data
+recursive-include musicgen_interpretation *.json
+recursive-include musicgen_interpretation *.yaml
+recursive-include musicgen_interpretation *.yml
+
+# Exclude development files
+exclude .git*
+exclude .github/*
+exclude tests/*
+exclude docs/*
+exclude examples/*
+exclude *.ipynb
+exclude *.pyc
+exclude __pycache__/*
+exclude .pytest_cache/*
+exclude .mypy_cache/*
+exclude .coverage
+exclude htmlcov/*
+exclude dist/*
+exclude build/*
+exclude *.egg-info/* 

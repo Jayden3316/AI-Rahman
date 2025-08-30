@@ -8,10 +8,10 @@ version = "0.1.0"
 description = "Fine-grained control over Music Generation with Activation Steering"
 readme = "README.md"
 authors = [
-    {name = "AI Club, Centre for Innovation, IIT Madras", email = "jaydenkjoe@gmail.com"}
+    {name = "anonymous", email = "anonymous"}
 ]
 maintainers = [
-    {name = "AI Club, Centre for Innovation, IIT Madras", email = "jaydenkjoe@gmail.com"}
+    {name = "anonymous", email = "anonymous"}
 ]
 keywords = ["music", "generation", "ai", "interpretability", "activation-steering", "musicgen"]
 requires-python = ">=3.8"
